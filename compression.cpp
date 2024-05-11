@@ -96,6 +96,14 @@ void add128(vector<vector<double>> &M, int N){
         }
     }
 }
+
+void quant(vector<vector<double>> &M, int N, int q){
+    for (int i = 0; i < N; i++){
+        for (int j = 0; j < N; j++){
+            M[i][j] *= q;
+        }
+    }
+}
 vector<vector<double>> image_compression(vector<vector<double>> &M , int N){
     // print(M,N);
     vector<vector<double>> T =  dct(N);
@@ -110,16 +118,7 @@ vector<vector<double>> image_compression(vector<vector<double>> &M , int N){
         {49, 64, 78, 87, 103, 121, 120, 101},
         {72, 92, 95, 98, 112, 100, 103, 99}
     };
-    // vector<vector<double>> sag = {
-    //     {154,123,123,123,123,123,123,136},
-    //     {192,180,136,154,154,154,136,110},
-    //     {254,198,154,154,180,154,123,123},
-    //     {239,180,136,180,180,166,123,123},
-    //     {180,154,136,167,166,149,136,136},
-    //     {128,136,123,136,154,180,198,154},
-    //     {123,105,110,149,136,136,180,166},
-    //     {110,136,123,123,123,136,154,136}
-    // };
+    quant(Q,N,5);
     sub128(M,N);
     vector<vector<double>> D = muls(M,T,T_tran,N);
     vector<vector<double>> C = compress(Q,D,N);
@@ -147,6 +146,7 @@ void read_image(string filename){
     // Get image dimensions
     int rows = grayImage.rows;
     int cols = grayImage.cols;
+    cout<<rows<<" "<<cols<<endl;
     
     int block_size = 8;
 
@@ -157,9 +157,10 @@ void read_image(string filename){
     for (int y = 0; y < rows; y += block_size) {
         for (int x = 0; x < cols; x += block_size) {
             // Extract an 8x8 region from the grayscale image
-            Rect roi(x, y, block_size, block_size);
+            // cout<<x<<" "<<y<<endl;
+            Rect roi(x, y, min(block_size,cols-x), block_size);
             Mat region = grayImage(roi);
-
+            cout<<region.rows<< " "<<region.cols<<endl;
             // Convert Mat region to a vector<vector<double>>
             vector<vector<double>> blockVector;
             for (int i = 0; i < region.rows; ++i) {
@@ -169,7 +170,11 @@ void read_image(string filename){
                 }
                 blockVector.push_back(rowVector);
             }
-
+            if (region.rows!= block_size || region.cols != block_size){
+                cout<<-1<<endl;
+                blockVectors.push_back(blockVector);
+                continue;
+            }
             vector<vector<double>> updated_blockVector = image_compression(blockVector,block_size);
             // return;
             // Store the block vector
