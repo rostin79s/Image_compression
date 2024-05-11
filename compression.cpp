@@ -139,12 +139,14 @@ void read_image(string filename){
         cout << "Error: Unable to read the image file." << endl;
         return;
     }
-    // Mat grayImage;
-    // cvtColor(image, grayImage, COLOR_BGR2GRAY);
+    Mat grayImage;
+    cvtColor(image, grayImage, COLOR_BGR2GRAY);
+
+    imwrite("gray_"+filename, grayImage);
 
     // Get image dimensions
-    int rows = image.rows;
-    int cols = image.cols;
+    int rows = grayImage.rows;
+    int cols = grayImage.cols;
     
     int block_size = 8;
 
@@ -156,7 +158,7 @@ void read_image(string filename){
         for (int x = 0; x < cols; x += block_size) {
             // Extract an 8x8 region from the grayscale image
             Rect roi(x, y, block_size, block_size);
-            Mat region = image(roi);
+            Mat region = grayImage(roi);
 
             // Convert Mat region to a vector<vector<double>>
             vector<vector<double>> blockVector;
@@ -168,10 +170,10 @@ void read_image(string filename){
                 blockVector.push_back(rowVector);
             }
 
-            // vector<vector<double>> updated_blockVector = image_compression(blockVector,block_size);
+            vector<vector<double>> updated_blockVector = image_compression(blockVector,block_size);
             // return;
             // Store the block vector
-            blockVectors.push_back(blockVector);
+            blockVectors.push_back(updated_blockVector);
         }
     }
 
@@ -191,9 +193,9 @@ void read_image(string filename){
         }
     }
 
-    imwrite("modified_paris.jpg", newImage);
+    imwrite("modified_"+filename, newImage);
 
-    cout << "Modified image saved as modified_paris.jpg" << endl;
+    cout <<"Modified image saved" << endl;
 }
 
 int main(){
