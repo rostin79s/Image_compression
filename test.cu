@@ -132,6 +132,26 @@ void roundAndAdd128OnGPU(dev_array<float>& d_block, int size) {
     roundAndAdd128<<<blocksPerGrid, threadsPerBlock>>>(d_block.getData(), size);
 }
 
+
+void updateImageFromBlock(const vector<float>& h_block, Mat& image, int block_row, int block_col) {
+    int block_size = 8;
+    int image_row = block_row * block_size;
+    int image_col = block_col * block_size;
+
+    for (int i = 0; i < block_size; ++i) {
+        for (int j = 0; j < block_size; ++j) {
+            int pixel_row = image_row + i;
+            int pixel_col = image_col + j;
+
+            // Ensure the pixel coordinates are within the image bounds
+            if (pixel_row < image.rows && pixel_col < image.cols) {
+                // Update the pixel value by adding the corresponding value from h_block
+                image.at<uchar>(pixel_row, pixel_col) = static_cast<uchar>(h_block[i * block_size + j]);
+            }
+        }
+    }
+}
+
 void image_compression(string filename){
     int N = 8;
     int size = N * N;
@@ -175,13 +195,9 @@ void image_compression(string filename){
     for (int i = 0; i < size; i++){
         h_Q[i] = min((float)255, h_Q[i] * q);
     }
-
-    printMatrix(h_Q,N);
-
     d_Q.set(&h_Q[0],size);
 
-    d_DCT_transpose.get(&h_block[0],size);
-    printMatrix(h_block,N);
+    Mat modified_image = image.clone();
 
     for (int i = 0; i < numBlocksY; ++i) {
         for (int j = 0; j < numBlocksX; ++j) {
@@ -194,7 +210,7 @@ void image_compression(string filename){
                     h_block[y * 8 + x] = static_cast<float>(block.at<uchar>(y, x)) - 128;
                 }
             }
-            printMatrix(h_block,N);
+            // printMatrix(h_block,N);
 
             d_block.set(&h_block[0],size);
             matrixMultiplication(d_DCT.getData(), d_block.getData(), d_result.getData(), N);
@@ -219,15 +235,18 @@ void image_compression(string filename){
 
             d_block.get(&h_block[0],size);
 
+            updateImageFromBlock(h_block, modified_image, i, j);
 
 
             
             
             
-            printMatrix(h_block, N);
-            return;
+            // printMatrix(h_block, N);
+            // return;
         }
     }
+
+    imwrite("parallel_" + filename, image);
     
 
 }

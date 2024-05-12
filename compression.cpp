@@ -77,7 +77,7 @@ vector<vector<float>> decompress(vector<vector<float>> &Q, vector<vector<float>>
 void sub128(vector<vector<float>> &M, int N){
     for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
-            M[i][j] = max((float)-127, min((float)128, M[i][j] - 128));
+            M[i][j] -= 128;
         }
     }
 }
@@ -118,7 +118,6 @@ void print(vector<vector<float>> &matrix, int N){
 
 vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
     vector<vector<float>> T =  dct(N);
-    print(T,N);
     vector<vector<float>> T_tran = transpose(T,N);
     vector<vector<float>> Q = {
         {16, 11, 10, 16, 24, 40, 51, 61},
@@ -131,12 +130,9 @@ vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
         {72, 92, 95, 98, 112, 100, 103, 99}
     };
     quant(Q,N,5);
-    print(Q,N);
     sub128(M,N);
-    print(M,N);
     vector<vector<float>> D = muls(M,T,T_tran,N);
     vector<vector<float>> C = compress(Q,D,N);
-    print(C,N);
     // we need to decode C
     vector<vector<float>> R = decompress(Q,C,N);
 
@@ -144,7 +140,6 @@ vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
     mat_round(res,N);
     add128(res,N);
 
-    print(res,N);
     return res;
 }
 
@@ -193,7 +188,7 @@ void read_image(string filename){
             }
             vector<vector<float>> updated_blockVector = image_compression(blockVector,block_size);
             // print(updated_blockVector,block_size);
-            return;
+            // return;
             // Store the block vector
             blockVectors.push_back(updated_blockVector);
         }
