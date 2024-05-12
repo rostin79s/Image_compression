@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <chrono>
 #include <opencv4/opencv2/opencv.hpp>
     
 using namespace std;
@@ -214,6 +215,14 @@ void read_image(string filename){
 
 int main(){
     string filename = "images/stone.jpg";
+    auto start = std::chrono::high_resolution_clock::now();
     read_image(filename);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Calculate duration
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    // Output the duration
+    std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
     return 0;
 }
