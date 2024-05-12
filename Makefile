@@ -5,7 +5,7 @@ LIBS=`pkg-config opencv4 --cflags --libs`
 
 run:
 	$(CC) $(CFLAGS) compression.cpp -o compression $(LIBS)
-	$(NVCC)  test.cu -o test
+	$(NVCC)  test.cu -o test $(LIBS)
 	$(NVCC)  parallel_compression.cu -o parallel_compression $(LIBS)
 
 clean:

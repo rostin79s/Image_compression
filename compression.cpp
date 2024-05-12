@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <chrono>
+#include <string>
 #include <opencv4/opencv2/opencv.hpp>
     
 using namespace std;
@@ -53,14 +54,6 @@ vector<vector<float>> muls(vector<vector<float>> &M,vector<vector<float>> &T,vec
     return D;
 }
 
-void print(vector<vector<float>> &matrix, int N){
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < N; j++) {
-            cout << matrix[i][j] << "\t"; // Print each element followed by a tab
-        }
-        cout << endl; // Move to the next line after printing each row
-    }
-}
 
 vector<vector<float>> compress(vector<vector<float>> &Q, vector<vector<float>> &D, int N){
     vector<vector<float>> C (N, vector<float>(N, 0.0));
@@ -84,14 +77,14 @@ vector<vector<float>> decompress(vector<vector<float>> &Q, vector<vector<float>>
 void sub128(vector<vector<float>> &M, int N){
     for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
-            M[i][j] -= 128;
+            M[i][j] = max((float)-127, min((float)128, M[i][j] - 128));
         }
     }
 }
 void add128(vector<vector<float>> &M, int N){
     for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
-            M[i][j] += 128;
+            M[i][j] = max((float)0, min((float)255, M[i][j] + 128));
         }
     }
 }
@@ -99,7 +92,7 @@ void add128(vector<vector<float>> &M, int N){
 void quant(vector<vector<float>> &M, int N, int q){
     for (int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
-            M[i][j] *= q;
+            M[i][j] = min((float)255, M[i][j] * q);
         }
     }
 }
@@ -112,8 +105,20 @@ void mat_round(vector<vector<float>> &M, int N){
     }
 }
 
+void print(vector<vector<float>> &matrix, int N){
+    cout<<"Matrix: "<<endl<<endl;
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            cout << matrix[i][j] << "\t"; // Print each element followed by a tab
+        }
+        cout << endl; // Move to the next line after printing each row
+    }
+    cout<<endl<<endl;
+}
+
 vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
     vector<vector<float>> T =  dct(N);
+    print(T,N);
     vector<vector<float>> T_tran = transpose(T,N);
     vector<vector<float>> Q = {
         {16, 11, 10, 16, 24, 40, 51, 61},
@@ -126,8 +131,11 @@ vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
         {72, 92, 95, 98, 112, 100, 103, 99}
     };
     quant(Q,N,5);
+    print(Q,N);
     sub128(M,N);
+    print(M,N);
     vector<vector<float>> D = muls(M,T,T_tran,N);
+    print(D,N);
     vector<vector<float>> C = compress(Q,D,N);
     // we need to decode C
     vector<vector<float>> R = decompress(Q,C,N);
@@ -184,7 +192,8 @@ void read_image(string filename){
                 continue;
             }
             vector<vector<float>> updated_blockVector = image_compression(blockVector,block_size);
-            // return;
+            // print(updated_blockVector,block_size);
+            return;
             // Store the block vector
             blockVectors.push_back(updated_blockVector);
         }
@@ -214,13 +223,11 @@ void read_image(string filename){
 int main(){
     string filename = "images/stone.jpg";
     auto start = std::chrono::high_resolution_clock::now();
+
     read_image(filename);
+
     auto end = std::chrono::high_resolution_clock::now();
-
-    // Calculate duration
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-    // Output the duration
     std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
     return 0;
 }
