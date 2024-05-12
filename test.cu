@@ -76,6 +76,61 @@ void matrixMultiplication(float *A, float *B, float *C, int N){
     matrixMultiplicationKernel<<<blocksPerGrid,threadsPerBlock>>>(A, B, C, N);
 }
 
+__global__ void quantizeBlock(float* block, float* Q, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        // Quantize the block element-wise
+        block[idx] = round(block[idx] / Q[idx]);
+    }
+}
+
+// Function to perform quantization on the GPU
+void quantizeOnGPU(dev_array<float>& d_block, dev_array<float>& d_Q, int size) {
+    dim3 threadsPerBlock(256); // 256 threads per block
+    dim3 blocksPerGrid((size + threadsPerBlock.x - 1) / threadsPerBlock.x);
+
+    quantizeBlock<<<blocksPerGrid, threadsPerBlock>>>(d_block.getData(), d_Q.getData(), size);
+}
+
+
+// Kernel function for element-wise matrix multiplication
+__global__ void matrixElementWiseMultiplication(float* A, float* B, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        A[idx] *= B[idx];
+    }
+}
+
+// Function to perform element-wise matrix multiplication on the GPU
+void elementWiseMatrixMultiplicationOnGPU(dev_array<float>& A, dev_array<float>& B, int size) {
+    dim3 threadsPerBlock(256); // 256 threads per block
+    dim3 blocksPerGrid((size + threadsPerBlock.x - 1) / threadsPerBlock.x);
+
+    matrixElementWiseMultiplication<<<blocksPerGrid, threadsPerBlock>>>(A.getData(), B.getData(), size);
+}
+
+// Kernel function to round each element and add 128
+__global__ void roundAndAdd128(float* block, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        // Round the element
+        block[idx] = roundf(block[idx]) + 128;
+
+        // Ensure the value is within the pixel range
+        block[idx] = max(0.0f, min(255.0f, block[idx]));
+    }
+}
+
+// Function to perform rounding and adding 128 on the GPU
+void roundAndAdd128OnGPU(dev_array<float>& d_block, int size) {
+    dim3 threadsPerBlock(256); // 256 threads per block
+    dim3 blocksPerGrid((size + threadsPerBlock.x - 1) / threadsPerBlock.x);
+
+    roundAndAdd128<<<blocksPerGrid, threadsPerBlock>>>(d_block.getData(), size);
+}
 
 void image_compression(string filename){
     int N = 8;
@@ -93,7 +148,7 @@ void image_compression(string filename){
 
     // Initialize matrices on the host
     vector<float> h_block(size);
-    vector<float> quantizationMatrix = {
+    vector<float> h_Q = {
         16, 11, 10, 16, 24, 40, 51, 61,
         12, 12, 14, 19, 26, 58, 60, 55,
         14, 13, 16, 24, 40, 57, 69, 56,
@@ -103,7 +158,7 @@ void image_compression(string filename){
         49, 64, 78, 87, 103, 121, 120, 101,
         72, 92, 95, 98, 112, 100, 103, 99
     };
-    float quantizationScalar = 5.0;
+    float q = 5.0;
 
 
     dev_array<float> d_block(size);
@@ -117,7 +172,13 @@ void image_compression(string filename){
     transposeMatrix<<<1, dim3(8, 8)>>>(d_DCT.getData(), d_DCT_transpose.getData());
     cudaDeviceSynchronize();
 
-    
+    for (int i = 0; i < size; i++){
+        h_Q[i] = min((float)255, h_Q[i] * q);
+    }
+
+    printMatrix(h_Q,N);
+
+    d_Q.set(&h_Q[0],size);
 
     d_DCT_transpose.get(&h_block[0],size);
     printMatrix(h_block,N);
@@ -141,8 +202,26 @@ void image_compression(string filename){
             matrixMultiplication(d_result.getData(), d_DCT_transpose.getData(), d_block.getData(), N);
             cudaDeviceSynchronize();
 
+            quantizeOnGPU(d_block,d_Q,size);
+            cudaDeviceSynchronize();
+
+            elementWiseMatrixMultiplicationOnGPU(d_block,d_Q,size);
+            cudaDeviceSynchronize();
+
+            matrixMultiplication(d_DCT_transpose.getData(), d_block.getData(), d_result.getData(), N);
+            cudaDeviceSynchronize();
+            matrixMultiplication(d_result.getData(), d_DCT.getData(), d_block.getData(), N);
+            cudaDeviceSynchronize();
+
+            roundAndAdd128OnGPU(d_block,size);
+            cudaDeviceSynchronize();
+
 
             d_block.get(&h_block[0],size);
+
+
+
+            
             
             
             printMatrix(h_block, N);

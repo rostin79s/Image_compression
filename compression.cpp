@@ -135,8 +135,8 @@ vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
     sub128(M,N);
     print(M,N);
     vector<vector<float>> D = muls(M,T,T_tran,N);
-    print(D,N);
     vector<vector<float>> C = compress(Q,D,N);
+    print(C,N);
     // we need to decode C
     vector<vector<float>> R = decompress(Q,C,N);
 
@@ -144,7 +144,7 @@ vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
     mat_round(res,N);
     add128(res,N);
 
-    // print(res,N);
+    print(res,N);
     return res;
 }
 
