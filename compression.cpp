@@ -104,8 +104,16 @@ void quant(vector<vector<double>> &M, int N, int q){
         }
     }
 }
+
+void mat_round(vector<vector<double>> &M, int N){
+    for (int i = 0; i < N; i++){
+        for (int j = 0; j < N; j++){
+            M[i][j] = round(M[i][j]);
+        }
+    }
+}
+
 vector<vector<double>> image_compression(vector<vector<double>> &M , int N){
-    // print(M,N);
     vector<vector<double>> T =  dct(N);
     vector<vector<double>> T_tran = transpose(T,N);
     vector<vector<double>> Q = {
@@ -126,6 +134,7 @@ vector<vector<double>> image_compression(vector<vector<double>> &M , int N){
     vector<vector<double>> R = decompress(Q,C,N);
 
     vector<vector<double>> res = muls(R,T_tran,T,N);
+    mat_round(res,N);
     add128(res,N);
 
     // print(res,N);
@@ -158,9 +167,9 @@ void read_image(string filename){
         for (int x = 0; x < cols; x += block_size) {
             // Extract an 8x8 region from the grayscale image
             // cout<<x<<" "<<y<<endl;
-            Rect roi(x, y, min(block_size,cols-x), block_size);
+            Rect roi(x, y, min(block_size,cols-x), min(block_size,rows-y));
             Mat region = grayImage(roi);
-            cout<<region.rows<< " "<<region.cols<<endl;
+            // cout<<region.rows<< " "<<region.cols<<endl;
             // Convert Mat region to a vector<vector<double>>
             vector<vector<double>> blockVector;
             for (int i = 0; i < region.rows; ++i) {
@@ -171,7 +180,7 @@ void read_image(string filename){
                 blockVector.push_back(rowVector);
             }
             if (region.rows!= block_size || region.cols != block_size){
-                cout<<-1<<endl;
+                // cout<<x<<" "<<y<<endl;
                 blockVectors.push_back(blockVector);
                 continue;
             }
@@ -190,8 +199,8 @@ void read_image(string filename){
             vector<vector<double>> blockVector = blockVectors[index++];
 
             // Convert the block vector back to Mat format
-            for (int i = 0; i < block_size; ++i) {
-                for (int j = 0; j < block_size; ++j) {
+            for (int i = 0; i < (int)blockVector.size(); ++i) {
+                for (int j = 0; j < (int)blockVector[0].size(); ++j) {
                     newImage.at<uchar>(y + i, x + j) = static_cast<uchar>(blockVector[i][j]);
                 }
             }
@@ -204,7 +213,7 @@ void read_image(string filename){
 }
 
 int main(){
-    string filename = "images/paris.jpg";
+    string filename = "images/stone.jpg";
     read_image(filename);
     return 0;
 }
