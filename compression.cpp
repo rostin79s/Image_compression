@@ -1,7 +1,5 @@
 #include <iostream>
-#include <fstream>
 #include <vector>
-#include <string>
 #include <cmath>
 #include <chrono>
 #include <opencv4/opencv2/opencv.hpp>
