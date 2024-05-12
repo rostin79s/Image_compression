@@ -162,8 +162,8 @@ void image_compression(string filename){
         return ;
     }
 
-    int numBlocksX = image.cols / 8;
-    int numBlocksY = image.rows / 8;
+    int numBlocksX = image.cols / N;
+    int numBlocksY = image.rows / N;
 
 
     // Initialize matrices on the host
@@ -246,7 +246,7 @@ void image_compression(string filename){
         }
     }
 
-    imwrite("parallel_" + filename, image);
+    imwrite("parallel_" + filename, modified_image);
     
 
 }
