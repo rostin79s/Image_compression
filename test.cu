@@ -11,23 +11,23 @@ using namespace std;
 using namespace cv;
 
 // Function to initialize DCT matrix on GPU
-__global__ void initDCTMatrix(float *d_DCT) {
+__global__ void initDCTMatrix(float *d_DCT, int N) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (i < 8 && j < 8) {
-        float alpha_i = (i == 0) ? sqrtf(1.0 / 8) : sqrtf(2) / sqrtf(8);
-        d_DCT[i * 8 + j] = alpha_i * cos((2 * j + 1) * i * M_PI / 16);
+    if (i < N && j < N) {
+        float alpha_i = (i == 0) ? sqrtf(1.0 / N) : sqrtf(2) / sqrtf(N);
+        d_DCT[i * N + j] = alpha_i * cos((2 * j + 1) * i * M_PI / 16);
     }
 }
 
 // Function to transpose matrix on GPU
-__global__ void transposeMatrix(float *input, float *output) {
+__global__ void transposeMatrix(float *input, float *output, int N) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (i < 8 && j < 8) {
-        output[j * 8 + i] = input[i * 8 + j];
+    if (i < N && j < N) {
+        output[j * N + i] = input[i * N + j];
     }
 }
 
@@ -133,20 +133,19 @@ void roundAndAdd128OnGPU(dev_array<float>& d_block, int size) {
 }
 
 
-void updateImageFromBlock(const vector<float>& h_block, Mat& image, int block_row, int block_col) {
-    int block_size = 8;
-    int image_row = block_row * block_size;
-    int image_col = block_col * block_size;
+void updateImageFromBlock(const vector<float>& h_block, Mat& image, int block_row, int block_col, int N) {
+    int image_row = block_row * N;
+    int image_col = block_col * N;
 
-    for (int i = 0; i < block_size; ++i) {
-        for (int j = 0; j < block_size; ++j) {
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
             int pixel_row = image_row + i;
             int pixel_col = image_col + j;
 
             // Ensure the pixel coordinates are within the image bounds
             if (pixel_row < image.rows && pixel_col < image.cols) {
                 // Update the pixel value by adding the corresponding value from h_block
-                image.at<uchar>(pixel_row, pixel_col) = static_cast<uchar>(h_block[i * block_size + j]);
+                image.at<uchar>(pixel_row, pixel_col) = static_cast<uchar>(h_block[i * N + j]);
             }
         }
     }
@@ -164,6 +163,7 @@ void image_compression(string filename){
 
     int numBlocksX = image.cols / N;
     int numBlocksY = image.rows / N;
+    cout<<image.cols<<" "<<image.rows<<endl;
 
 
     // Initialize matrices on the host
@@ -187,9 +187,9 @@ void image_compression(string filename){
     dev_array<float> d_result(size);
     dev_array<float> d_Q(size);
 
-    initDCTMatrix<<<1, dim3(8, 8)>>>(d_DCT.getData());
+    initDCTMatrix<<<1, dim3(N, N)>>>(d_DCT.getData(), N);
     cudaDeviceSynchronize();
-    transposeMatrix<<<1, dim3(8, 8)>>>(d_DCT.getData(), d_DCT_transpose.getData());
+    transposeMatrix<<<1, dim3(N, N)>>>(d_DCT.getData(), d_DCT_transpose.getData(), N);
     cudaDeviceSynchronize();
 
     for (int i = 0; i < size; i++){
@@ -202,12 +202,12 @@ void image_compression(string filename){
     for (int i = 0; i < numBlocksY; ++i) {
         for (int j = 0; j < numBlocksX; ++j) {
             // Get the 8x8 block from the image
-            Mat block = image(Rect(j * 8, i * 8, 8, 8));
+            Mat block = image(Rect(j * N, i * N, N, N));
 
             // Convert the block to float and store it in h_A
-            for (int y = 0; y < 8; ++y) {
-                for (int x = 0; x < 8; ++x) {
-                    h_block[y * 8 + x] = static_cast<float>(block.at<uchar>(y, x)) - 128;
+            for (int y = 0; y < N; ++y) {
+                for (int x = 0; x < N; ++x) {
+                    h_block[y * N + x] = static_cast<float>(block.at<uchar>(y, x)) - 128;
                 }
             }
             // printMatrix(h_block,N);
@@ -235,7 +235,7 @@ void image_compression(string filename){
 
             d_block.get(&h_block[0],size);
 
-            updateImageFromBlock(h_block, modified_image, i, j);
+            updateImageFromBlock(h_block, modified_image, i, j, N);
 
 
             
