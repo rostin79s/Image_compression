@@ -1,92 +1,222 @@
-#include <iostream>
-#include <vector>
 #include <cmath>
+#include <iostream>
+#include "cuda_runtime.h"
+#include <vector>
+#include <string>
+#include <chrono>
 #include <opencv4/opencv2/opencv.hpp>
+#include "dev_array.h"
 
-// CUDA kernel for DCT calculation
-__global__ void dct_kernel(double *T, int N) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+using namespace std;
+using namespace cv;
+
+// Function to initialize DCT matrix on GPU
+__global__ void initDCTMatrix(float *d_DCT, int N) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i < N && j < N) {
-        if (i == 0) {
-            T[i * N + j] = 1 / sqrtf(N);
-        } else {
-            double tmp = ((2 * j + 1) * i * M_PI) / (2 * N);
-            T[i * N + j] = sqrtf(2) / sqrtf(N) * cos(tmp);
+        float alpha_i = (i == 0) ? sqrtf(1.0 / N) : sqrtf(2) / sqrtf(N);
+        d_DCT[i * N + j] = alpha_i * cos((2 * j + 1) * i * M_PI / 16);
+    }
+}
+
+// Function to transpose matrix on GPU
+__global__ void transposeMatrix(float *input, float *output, int N) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < N && j < N) {
+        output[j * N + i] = input[i * N + j];
+    }
+}
+
+__global__ void processBlock(float* d_image, float * d_imageres, float* d_DCT, float* d_DCT_transpose, float* d_Q, int N, int numBlocksX, int numBlocksY) {
+    int block_row = blockIdx.y;
+    int block_col = blockIdx.x;
+
+    if (block_row < numBlocksY && block_col < numBlocksX) {
+        int start_idx = (block_row * numBlocksX + block_col) * N * N;
+        float tmpSum = 0;
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                int pixel_idx = i * N + j;
+                tmpSum = 0;
+                for (int k = 0; k < N; ++k) {
+                    tmpSum += d_DCT[i * N + k] * d_image[start_idx + k * N + j];
+                }
+                d_imageres[start_idx + pixel_idx] = tmpSum;
+            }
+        }
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                int pixel_idx = i * N + j;
+                tmpSum = 0;
+                for (int k = 0; k < N; ++k) {
+                    tmpSum += d_imageres[start_idx + i * N + k] *d_DCT_transpose[k * N + j];
+                }
+                d_image[start_idx + pixel_idx] = tmpSum;
+            }
+        }
+
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                int pixel_idx = i * N + j;
+                d_image[start_idx + pixel_idx] = roundf(d_image[start_idx + pixel_idx] / d_Q[pixel_idx]);
+                d_image[start_idx + pixel_idx] *= d_Q[pixel_idx];
+            }
+        }
+
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                int pixel_idx = i * N + j;
+                tmpSum = 0;
+                for (int k = 0; k < N; ++k) {
+                    tmpSum += d_DCT_transpose[i * N + k] * d_image[start_idx + k * N + j];
+                }
+                d_imageres[start_idx + pixel_idx] = tmpSum;
+            }
+        }
+
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                int pixel_idx = i * N + j;
+                tmpSum = 0;
+                for (int k = 0; k < N; ++k) {
+                    tmpSum += d_imageres[start_idx + i * N + k] *d_DCT[k * N + j];
+                }
+                d_image[start_idx + pixel_idx] = tmpSum;
+            }
+        }
+
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                int pixel_idx = i * N + j;
+                d_image[start_idx + pixel_idx] = roundf(d_image[start_idx + pixel_idx]) + 128;
+                d_image[start_idx + pixel_idx] = max(0.0f, min(255.0f, d_image[start_idx + pixel_idx]));
+            }
         }
     }
 }
 
-// CUDA kernel for matrix multiplication
-__global__ void mat_mul_kernel(double *A, double *B, double *C, int N) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < N && j < N) {
-        double sum = 0.0;
-        for (int k = 0; k < N; ++k) {
-            sum += A[i * N + k] * B[k * N + j];
+
+// Function to print matrix. for debugging
+void printMatrix(vector<float> matrix, int N, int M) {
+    cout << "Matrix:" << endl;
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < M; ++j) {
+            cout << matrix[i * M + j] << "\t";
         }
-        C[i * N + j] = sum;
+        cout << endl;
     }
+    cout << endl;
+}
+
+
+void image_compression(string filename){
+    int N = 8;
+
+    Mat image = imread(filename, IMREAD_GRAYSCALE);
+    if (image.empty()) {
+        cerr << "Error: Unable to read the image file." << endl;
+        return ;
+    }
+
+    int numBlocksX = image.cols / N;
+    int numBlocksY = image.rows / N;
+
+    // Initialize matrices on the host
+    vector<float> h_Q = {
+        16, 11, 10, 16, 24, 40, 51, 61,
+        12, 12, 14, 19, 26, 58, 60, 55,
+        14, 13, 16, 24, 40, 57, 69, 56,
+        14, 17, 22, 29, 51, 87, 80, 62,
+        18, 22, 37, 56, 68, 109, 103, 77,
+        24, 35, 55, 64, 81, 104, 113, 92,
+        49, 64, 78, 87, 103, 121, 120, 101,
+        72, 92, 95, 98, 112, 100, 103, 99
+    };
+    float q = 5.0;
+
+    // Quantize the quantization matrix
+    for (int i = 0; i < N * N; i++){
+        h_Q[i] = min(255.0f, h_Q[i] * q);
+    }
+
+    // Calculate quantization matrix
+    dev_array<float> d_Q(N * N);
+    d_Q.set(&h_Q[0], N * N);
+
+    // Calculate the DCT matrix
+    dev_array<float> d_DCT(N * N);
+    initDCTMatrix<<<1, dim3(N, N)>>>(d_DCT.getData(), N);
+    cudaDeviceSynchronize();
+
+    // Calculate the transpose of the DCT matrix
+    dev_array<float> d_DCT_transpose(N * N);
+    transposeMatrix<<<1, dim3(N, N)>>>(d_DCT.getData(), d_DCT_transpose.getData(), N);
+    cudaDeviceSynchronize();
+
+    vector<float> h_image(image.cols * image.rows);
+
+    for (int i = 0; i < numBlocksY; ++i) {
+        for (int j = 0; j < numBlocksX; ++j) {
+            Mat block = image(Rect(j * N, i * N, N, N));
+            int blockStartIndex = (i * numBlocksX + j) * N * N;
+
+            for (int y = 0; y < N; ++y) {
+                for (int x = 0; x < N; ++x) {
+                    int blockIndex = y * N + x;
+                    h_image[blockStartIndex + blockIndex] = static_cast<float>(block.at<uchar>(y, x)) - 128;
+                }
+            }
+        }
+    }   
+
+    dev_array<float> d_image(image.cols * image.rows);
+    // this is needed for temp matrix mul,
+    dev_array<float> d_imageres(image.cols * image.rows);
+    d_image.set(&h_image[0], image.cols * image.rows);
+
+    // Set up grid and block dimensions
+    dim3 threadsPerBlock(1, 1); // One thread per block
+    dim3 blocksPerGrid(numBlocksX, numBlocksY); // One block per 8x8 block in the image
+
+    // Process each block in parallel
+    processBlock<<<blocksPerGrid, threadsPerBlock>>>(d_image.getData(),d_imageres.getData(), d_DCT.getData(), d_DCT_transpose.getData(), d_Q.getData(), N, numBlocksX, numBlocksY);
+    cudaDeviceSynchronize();
+
+    d_image.get(&h_image[0], image.cols * image.rows);
+
+    for (int i = 0; i < numBlocksY; ++i) {
+        for (int j = 0; j < numBlocksX; ++j) {
+            Mat block = image(Rect(j * N, i * N, N, N));
+            int blockStartIndex = (i * numBlocksX + j) * N * N;
+
+            for (int y = 0; y < N; ++y) {
+                for (int x = 0; x < N; ++x) {
+                    int blockIndex = y * N + x;
+                    block.at<uchar>(y, x) = h_image[blockStartIndex + blockIndex];
+                }
+            }
+        }
+    }   
+    imwrite("parallel_" + filename, image);
+
+    cout <<"Modified image saved" << endl;
 }
 
 int main() {
-    // Load image and convert to grayscale
-    cv::Mat image = cv::imread("images/stone.jpg", cv::IMREAD_GRAYSCALE);
-    if (image.empty()) {
-        std::cerr << "Error: Unable to read the image file." << std::endl;
-        return -1;
-    }
+    string filename = "images/stone.jpg";
 
-    int N = 8; // Size of the DCT matrix (assuming 8x8 blocks)
-    int rows = image.rows;
-    int cols = image.cols;
+    auto start = std::chrono::high_resolution_clock::now();
 
-    // Allocate memory for DCT matrix on GPU
-    double *d_T;
-    cudaMalloc(&d_T, N * N * sizeof(double));
+    image_compression(filename);
 
-    // Launch DCT kernel
-    dim3 blockSize(8, 8);
-    dim3 gridSize((N + blockSize.x - 1) / blockSize.x, (N + blockSize.y - 1) / blockSize.y);
-    dct_kernel<<<gridSize, blockSize>>>(d_T, N);
-    cudaDeviceSynchronize(); // Ensure all threads have finished execution
-
-    // Allocate memory for image data on GPU
-    double *d_image;
-    size_t image_size = rows * cols * sizeof(double);
-    cudaMalloc(&d_image, image_size);
-
-    // Copy image data from CPU to GPU
-    cudaMemcpy(d_image, image.data, image_size, cudaMemcpyHostToDevice);
-
-    // Allocate memory for result matrix on GPU
-    double *d_result;
-    cudaMalloc(&d_result, image_size);
-
-    // Calculate grid and block dimensions for matrix multiplication kernel
-    int block_dim = 16; // Adjust this based on your GPU architecture
-    dim3 block(block_dim, block_dim);
-    dim3 grid((cols + block.x - 1) / block.x, (rows + block.y - 1) / block.y);
-
-    // Launch matrix multiplication kernel
-    mat_mul_kernel<<<grid, block>>>(d_T, d_image, d_result, N);
-    cudaDeviceSynchronize();
-
-    // Copy result back from GPU to CPU
-    cv::Mat result(rows, cols, CV_64F);
-    cudaMemcpy(result.data, d_result, image_size, cudaMemcpyDeviceToHost);
-
-    // Free allocated memory on GPU
-    cudaFree(d_T);
-    cudaFree(d_image);
-    cudaFree(d_result);
-
-    // Save or display the result
-    cv::imwrite("modified_stone.jpg", result);
-    std::cout << "Modified image saved" << std::endl;
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
 
     return 0;
 }

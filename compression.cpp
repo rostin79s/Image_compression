@@ -105,13 +105,14 @@ void mat_round(vector<vector<float>> &M, int N){
     }
 }
 
+// print matrix for debugging
 void print(vector<vector<float>> &matrix, int N){
     cout<<"Matrix: "<<endl<<endl;
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
-            cout << matrix[i][j] << "\t"; // Print each element followed by a tab
+            cout << matrix[i][j] << "\t"; 
         }
-        cout << endl; // Move to the next line after printing each row
+        cout << endl; 
     }
     cout<<endl<<endl;
 }
@@ -131,15 +132,17 @@ vector<vector<float>> image_compression(vector<vector<float>> &M , int N){
     };
     quant(Q,N,5);
     sub128(M,N);
+    vector<vector<float>> tmp = mat_mul(T,M,N);
     vector<vector<float>> D = muls(M,T,T_tran,N);
     vector<vector<float>> C = compress(Q,D,N);
-    // we need to decode C
+
+    // In JPEG, C matrix will be encoded to save space and remove 0s.
+
     vector<vector<float>> R = decompress(Q,C,N);
 
     vector<vector<float>> res = muls(R,T_tran,T,N);
     mat_round(res,N);
     add128(res,N);
-
     return res;
 }
 
@@ -161,18 +164,12 @@ void read_image(string filename){
     
     int block_size = 8;
 
-    // Vector to store 8x8 regions as vectors of vectors
     vector<vector<vector<float>>> blockVectors;
 
-    // Loop through the image and convert each 8x8 block to vector of vectors
     for (int y = 0; y < rows; y += block_size) {
         for (int x = 0; x < cols; x += block_size) {
-            // Extract an 8x8 region from the grayscale image
-            // cout<<x<<" "<<y<<endl;
             Rect roi(x, y, min(block_size,cols-x), min(block_size,rows-y));
             Mat region = grayImage(roi);
-            // cout<<region.rows<< " "<<region.cols<<endl;
-            // Convert Mat region to a vector<vector<float>>
             vector<vector<float>> blockVector;
             for (int i = 0; i < region.rows; ++i) {
                 vector<float> rowVector;
@@ -182,26 +179,19 @@ void read_image(string filename){
                 blockVector.push_back(rowVector);
             }
             if (region.rows!= block_size || region.cols != block_size){
-                // cout<<x<<" "<<y<<endl;
                 blockVectors.push_back(blockVector);
                 continue;
             }
             vector<vector<float>> updated_blockVector = image_compression(blockVector,block_size);
-            // print(updated_blockVector,block_size);
-            // return;
-            // Store the block vector
             blockVectors.push_back(updated_blockVector);
         }
     }
 
-    Mat newImage(rows, cols, CV_8U, Scalar(0)); // Create a new grayscale image
+    Mat newImage(rows, cols, CV_8U, Scalar(0));
     int index = 0;
     for (int y = 0; y < rows; y += block_size) {
         for (int x = 0; x < cols; x += block_size) {
-            // Get the block vector
             vector<vector<float>> blockVector = blockVectors[index++];
-
-            // Convert the block vector back to Mat format
             for (int i = 0; i < (int)blockVector.size(); ++i) {
                 for (int j = 0; j < (int)blockVector[0].size(); ++j) {
                     newImage.at<uchar>(y + i, x + j) = static_cast<uchar>(blockVector[i][j]);
