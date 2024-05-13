@@ -206,7 +206,7 @@ void read_image(string filename){
 }
 
 int main(){
-    string filename = "images/stone.jpg";
+    string filename = "images/nature.jpg";
     auto start = std::chrono::high_resolution_clock::now();
 
     read_image(filename);

@@ -58,7 +58,6 @@ __global__ void processBlock(float* d_image, float * d_imageres, float* d_DCT, f
                 d_image[start_idx + pixel_idx] = tmpSum;
             }
         }
-
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < N; ++j) {
                 int pixel_idx = i * N + j;
@@ -66,7 +65,6 @@ __global__ void processBlock(float* d_image, float * d_imageres, float* d_DCT, f
                 d_image[start_idx + pixel_idx] *= d_Q[pixel_idx];
             }
         }
-
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < N; ++j) {
                 int pixel_idx = i * N + j;
@@ -88,7 +86,6 @@ __global__ void processBlock(float* d_image, float * d_imageres, float* d_DCT, f
                 d_image[start_idx + pixel_idx] = tmpSum;
             }
         }
-
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < N; ++j) {
                 int pixel_idx = i * N + j;
@@ -180,7 +177,7 @@ void image_compression(string filename){
     d_image.set(&h_image[0], image.cols * image.rows);
 
     // Set up grid and block dimensions
-    dim3 threadsPerBlock(1, 1); // One thread per block
+    dim3 threadsPerBlock(1,1); // thread per block
     dim3 blocksPerGrid(numBlocksX, numBlocksY); // One block per 8x8 block in the image
 
     // Process each block in parallel
@@ -208,7 +205,25 @@ void image_compression(string filename){
 }
 
 int main() {
-    string filename = "images/stone.jpg";
+
+    int deviceId = 0; // GPU device ID
+    cudaDeviceProp deviceProp;
+    
+
+    cudaGetDeviceProperties(&deviceProp, deviceId);
+
+    int maxThreadsPerSM = deviceProp.maxThreadsPerMultiProcessor;
+    int warpSize = deviceProp.warpSize;
+    int maxThreadsPerBlock = deviceProp.maxThreadsPerBlock;
+    int numSMs = deviceProp.multiProcessorCount;
+
+    std::cout << "Maximum Threads per SM: " << maxThreadsPerSM << std::endl;
+    std::cout << "Warp Size: " << warpSize << std::endl;
+    std::cout << "Maximum Threads per Block: " << maxThreadsPerBlock << std::endl;
+    std::cout << "Number of SMs: " << numSMs << std::endl;
+
+
+    string filename = "images/nature.jpg";
 
     auto start = std::chrono::high_resolution_clock::now();
 
