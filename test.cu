@@ -155,7 +155,7 @@ void image_compression(string filename){
     int N = 8;
     int size = N * N;
 
-    Mat image = imread("images/stone.jpg", IMREAD_GRAYSCALE);
+    Mat image = imread("images/paris.jpg", IMREAD_GRAYSCALE);
     if (image.empty()) {
         cerr << "Error: Unable to read the image file." << endl;
         return ;

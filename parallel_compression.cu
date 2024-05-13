@@ -223,7 +223,7 @@ int main() {
     std::cout << "Number of SMs: " << numSMs << std::endl;
 
 
-    string filename = "images/nature.jpg";
+    string filename = "images/stone.jpg";
 
     auto start = std::chrono::high_resolution_clock::now();
 
